@@ -26,6 +26,7 @@ angular.module('wikiBed', [])
             }
             wikiConnect.splitToc = options.splitToc || true; //Split the article by TOC and return under data.byToc
             wikiConnect.stripToc = options.stripToc || true; //Weather or not to remove the TOC reference, normally the heading of that section
+            wikiConnect.smartStrip = options.smartStrip || true; //If this is set, the code will try to remove some wiki specific stuff, for example editing tags after headings
             wikiConnect.rewriteUrl = options.rewriteUrl || true; //Rewrite url for images and resources (not internal links though)
             wikiConnect.rewriteRoot = options.rewriteRoot || '/wiki/' //How the actual wiki reefers to its internal files
             wikiConnect.rewriteTarget = options.rewriteTarget || '/wikiproxy/'   // If set, any links for images for example /wiki/images goes to /wikiproxy/images
@@ -62,30 +63,78 @@ angular.module('wikiBed', [])
                     }
                     if (wikiConnect.splitToc) {
                         console.log ("I will split the TOC ");
-                        parse.splitToc = [];
-                        var tmpStr = parse.text[star].toString();
-
-                        for (var sectionId in parse.sections) {
+                        var tmpStr = parse.text[star].toString(); //We will use this block as a temporary storage
+                        parse.splitToc = [];  // We will return each sections as a parse.splitToc.[number], with a nummber of structures underneith
+                        noSections= parseInt(parse.sections.length) //How many sections fo we have
+                        console.log ("Number of sections: " + noSections);
+                        for ( var sectionId = 0; sectionId<noSections; sectionId++){
                             parse.splitToc[sectionId] = [];
-                            console.log("Sections ID: " + sectionId + " DATA: " + parse.sections[sectionId]);
-
-                            for (var i in parse.sections[sectionId]){
-                                console.log("Sections "+ [sectionId] +" ID: " + i + " DATA: " + parse.sections[sectionId][i]);
+                            console.log("We created the section: " + sectionId+"\n and this is the data we have");
+                            var nameToc = parse.sections[sectionId].line
+                            var idToc = parse.sections[sectionId].anchor
+                            var endOffset;
+                            var startPat = '<span class="mw-headline" id="'+ idToc + '">'+nameToc+'</span>'
+                            console.log("We will be looking for " + startPat);
+                            var startOffset= tmpStr.search(startPat);
+                            console.log("Founnd at pos " + startOffset);
+                            var endStartOffset = startOffset + startPat.length;
+                            //Lets see if we can catch a <H?> thing before as well
+                            var regHtest = new RegExp("<[h,H][1-6]>");
+                            console.log(startOffset-4)
+                            var Htest = tmpStr.slice(startOffset-4, startOffset);
+                            var HendPat = "</span></"+tmpStr.slice(startOffset-3, startOffset); //This should contain the header size
+                            console.log("Will cut at " + HendPat);
+                            if(startOffset-4){
+                                startOffset = startOffset-4;
+                                console.log("moving start offset to " + startOffset);
 
                             }
-                            var nextsection = parseInt(sectionId) + 1;
+                            parse.splitToc[sectionId].startOffset = startOffset
+                            console.log ("Start set to " +parse.splitToc[sectionId].startOffset )
+                            
 
-                            if (parse.sections[nextsection]['byteoffset']){
-                                parse.splitToc[sectionId].text = tmpStr.slice(parse.sections[sectionId]['byteoffset'],parse.sections[nextsection]['byteoffset'])
-                                console.log("New Section:");
-                                console.log(parse.splitToc[sectionId].text);
+
+                            //We now know where the previous section ends, so lest set it
+                            if(sectionId == 0 ){
+                                console.log("This is the fisrt section")
                             } else {
-                                parse.splitToc[sectionId].text = tmpStr.slice(parse.sections[sectionId]['byteoffset'])
-                                console.log("New Section:");
-                                console.log(parse.splitToc[sectionId].text);
+                                var preSection=sectionId-1 
+                                parse.splitToc[preSection].endOffset = startOffset;
+                                console.log("Setting previous end for "+ preSection +" to " + parse.splitToc[preSection].endOffset);
                             }
+
+                            //If this is the last one, we remove this part as well
+                            if(sectionId+1 == noSections){
+                                parse.splitToc[sectionId].endOffset = tmpStr.length;
+                                console.log("This is the last section, end sett to " + parse.splitToc[sectionId].endOffset);
+                            } 
+                            
+                            if (wikiConnect.stripToc || wikiConnect.smartStrip ){
+                                var tmpCuStr = tmpStr.slice(startOffset, tmpStr.length);
+                                var startEndTocOffset = tmpCuStr.search(HendPat);
+                                console.log("I am edign at " + startEndTocOffset);
+                                var endTocOffset = startEndTocOffset + HendPat.length;
+                                console.log("And the Toc ends at" + endTocOffset);
+                                if (wikiConnect.stripToc){
+                                    console.log("Will strip");
+                                    parse.splitToc[sectionId].startOffset = parse.splitToc[sectionId].startOffset+endTocOffset;
+                                } else if (wikiConnect.smartStrip) {
+
+                                    
+                                }
+                            }
+                            //We will now identify the full Toc block
+
+                           
 
                         }
+                        for ( var sectionId = 0; sectionId<noSections; sectionId++){
+                             parse.splitToc[sectionId].text=tmpStr.slice(parse.splitToc[sectionId].startOffset, parse.splitToc[sectionId].endOffset );
+                            console.log("Think the section is: " + parse.splitToc[sectionId].text.length);
+
+
+                        }
+
                     }
 
                     //console.log ("Got some data " + data)
@@ -105,3 +154,4 @@ angular.module('wikiBed', [])
 
 // 5. define another module component
     .directive('directiveName', function() {/* stuff here */})
+;// and so on
